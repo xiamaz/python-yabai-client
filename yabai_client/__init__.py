@@ -1,5 +1,6 @@
 import json
 import socket
+import select
 import pathlib
 
 
@@ -14,12 +15,37 @@ class YabaiClient:
         self._yabai_socket = str(yabai_sockets[0])
 
     def send_message(self, message):
-        cleaned_message = message.replace(" ", "\0") + "\0"
+        tries = 5
+        for _ in range(tries):
+            try:
+                result = self._send_message(message)
+                break
+            except json.JSONDecodeError as err:
+                continue
+        else:
+            raise RuntimeError(f"Failed to send message after {tries} attempts.")
+        return result
+
+    def _send_message(self, message):
+        cleaned_message = message.replace(" ", "\0") + "\0\0"
+
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
             sock.connect(self._yabai_socket)
-            sock.sendall(str.encode(cleaned_message))
+            sent = sock.send(str.encode(cleaned_message))
             sock.shutdown(socket.SHUT_WR)
-            recv = str(sock.recv(BUFFER_SIZE), "utf-8")
 
-        data = json.loads(recv)
+            poller = select.poll()
+            poller.register(sock, select.POLLIN)
+            msg = ""
+            while True:
+                poller.poll()
+                recv = str(sock.recv(BUFFER_SIZE), "utf-8")
+
+                msg += recv
+
+                if len(recv) == 0:
+                    break
+
+            data = json.loads(msg)
+
         return data
