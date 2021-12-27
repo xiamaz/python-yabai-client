@@ -14,11 +14,11 @@ class YabaiClient:
         yabai_sockets = list(pathlib.Path("/tmp").glob("yabai_*.socket"))
         self._yabai_socket = str(yabai_sockets[0])
 
-    def send_message(self, *message):
+    def send_message(self, *message, expect_result=True):
         tries = 5
         for _ in range(tries):
             try:
-                result = self._send_message(*message)
+                result = self._send_message(*message, expect_result=expect_result)
                 break
             except json.JSONDecodeError as err:
                 continue
@@ -26,8 +26,9 @@ class YabaiClient:
             raise RuntimeError(f"Failed to send message after {tries} attempts.")
         return result
 
-    def _send_message(self, *message):
+    def _send_message(self, *message, expect_result=True):
         cleaned_message = "\0".join(message) + "\0\0"
+
 
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
             sock.connect(self._yabai_socket)
@@ -46,6 +47,9 @@ class YabaiClient:
                 if len(recv) == 0:
                     break
 
-            data = json.loads(msg)
+            if expect_result:
+                data = json.loads(msg)
+            else:
+                data = None
 
         return data
